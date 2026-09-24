@@ -8,7 +8,7 @@ from collections.abc import Iterator
 
 from openai import OpenAI
 
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://spark.tail78e47b.ts.net:8888/v1")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:8000/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-v4-flash-dspark")
 
 _client = OpenAI(base_url=LLM_BASE_URL, api_key=os.environ.get("LLM_API_KEY", "not-needed"), timeout=300)

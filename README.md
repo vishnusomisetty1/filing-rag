@@ -6,6 +6,7 @@ DeepSeek V4 Flash on the Spark. No API key.
 ```
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 export SEC_USER_AGENT="Your Name you@example.com"      # SEC requires a contact
+export LLM_BASE_URL=http://localhost:8000/v1       # any OpenAI-compatible endpoint
 .venv/bin/python sec_ingest.py AAPL MSFT                # latest 10-K per ticker
 .venv/bin/python transcript_parser.py call.txt --ticker AAPL --period "Q4 FY2025"
 .venv/bin/streamlit run app.py
