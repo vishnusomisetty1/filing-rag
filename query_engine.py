@@ -80,6 +80,12 @@ def citation_label(meta: dict) -> str:
     return "[" + " | ".join(p for p in parts if p) + "]"
 
 
+def short_label(meta: dict) -> str:
+    """Compact inline form of citation_label; the full label is shown under Sources."""
+    parts = [f"{meta.get('ticker', '')} {meta.get('doc_type', '')}".strip(), meta.get("section_id", "")]
+    return "[" + " · ".join(p for p in parts if p) + "]"
+
+
 def md_safe(text: str) -> str:
     """Escape lone '$' so Streamlit doesn't treat currency as LaTeX; keep $$...$$ blocks."""
     parts = re.split(r"(\$\$.*?\$\$)", text, flags=re.S)
@@ -94,9 +100,9 @@ def render_citations(text: str, sources: list[dict]) -> str:
             i = int(m.group(1)) - 1
             if not 0 <= i < len(sources):
                 return m.group(0)
-            label = citation_label(sources[i]["metadata"])
+            label = short_label(sources[i]["metadata"])
             return f"`{label.replace('|', chr(92) + '|') if in_table else label}`"
-        return re.sub(r"\[S(\d+)\]", sub, line)
+        return re.sub(r"\[S(\d+)\]", sub, line).replace("]``[", "]` `[")
     return "\n".join(render_line(l) for l in text.split("\n"))
 
 

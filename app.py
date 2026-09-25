@@ -24,47 +24,75 @@ MAX_PER_SESSION = int(os.environ.get("DEMO_MAX_QUESTIONS_PER_SESSION", "20"))
 MAX_CONCURRENT = int(os.environ.get("DEMO_MAX_CONCURRENT", "2"))
 MAX_QUESTION_CHARS = 500
 
-st.set_page_config(page_title="Filing-RAG", page_icon="📑", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Filing-RAG", page_icon="📑", layout="wide", initial_sidebar_state="auto")
 
-# --- CUSTOM CSS FOR UI/UX OVERHAUL ---
 st.markdown("""
 <style>
-    /* Main app padding */
-    .block-container {
-        padding-top: 2rem !important;
-        max-width: 900px !important;
+    .block-container { padding-top: 2.5rem !important; max-width: 860px !important; }
+    h1, h2, h3 { letter-spacing: -0.02em !important; }
+
+    /* Hero: gate and empty state */
+    .hero { text-align: center; margin: 3rem 0 2rem; }
+    .hero .mark { font-size: 2.6rem; line-height: 1; }
+    .hero h1 {
+        font-size: 2.4rem !important; font-weight: 700 !important; padding: 0.4rem 0 0.2rem !important;
+        background: linear-gradient(90deg, #f8fafc, #93c5fd);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    /* Sleeker chat input */
-    .stChatInputContainer {
-        border-radius: 16px !important;
-        border: 1px solid #334155 !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+    .hero p { color: #94a3b8; font-size: 1.02rem; max-width: 560px; margin: 0.4rem auto 0; }
+    .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; margin-top: 1.1rem; }
+    .chip {
+        font-size: 0.78rem; font-weight: 600; color: #93c5fd; background: rgba(59,130,246,0.1);
+        border: 1px solid rgba(59,130,246,0.3); border-radius: 999px; padding: 0.15rem 0.65rem;
     }
-    /* Styled expanders for sources */
+    .hint { color: #64748b; font-size: 0.82rem; text-align: center; margin: 1.6rem 0 0.6rem; }
+
+    /* Suggested questions */
+    .stButton button {
+        border-radius: 12px !important; border: 1px solid #334155 !important;
+        background: #1e293b !important; transition: border-color .15s, background .15s;
+    }
+    .stButton button:hover { border-color: #3b82f6 !important; background: #1e3a5f !important; }
+    .st-key-suggest .stButton button { min-height: 4.2rem; justify-content: flex-start; padding: 0.6rem 0.9rem !important; }
+    .st-key-suggest .stButton button > div { width: 100%; justify-content: flex-start !important; }
+    .st-key-suggest .stButton button * { white-space: normal !important; text-align: left !important; overflow: visible !important; }
+
+    /* Chat */
+    [data-testid="stChatInput"] { border-radius: 16px !important; }
+    [data-testid="stChatMessage"] { border-radius: 14px !important; padding: 0.9rem 1rem !important; }
     [data-testid="stExpander"] {
-        border: 1px solid #334155 !important;
-        border-radius: 8px !important;
-        background-color: #0f172a !important;
+        border: 1px solid #334155 !important; border-radius: 10px !important; background: #0f172a !important;
     }
-    [data-testid="stExpander"] summary {
-        font-weight: 600 !important;
-        color: #94a3b8 !important;
-    }
-    /* Inline citations styling */
+    [data-testid="stExpander"] summary { font-weight: 600 !important; color: #94a3b8 !important; }
+
+    /* Inline citations */
     code {
-        color: #3b82f6 !important;
-        background-color: #1e293b !important;
-        border: 1px solid #334155 !important;
-        border-radius: 4px !important;
-        padding: 0.1em 0.4em !important;
-        font-size: 0.85em !important;
+        color: #93c5fd !important; background: #1e293b !important; border: 1px solid #334155 !important;
+        border-radius: 4px !important; padding: 0.1em 0.4em !important; font-size: 0.85em !important;
     }
-    /* Typography tweaks */
-    h1, h2, h3 {
-        letter-spacing: -0.02em !important;
-    }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] { border-right: 1px solid #1e293b; }
+    .brand { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.3rem; }
+    .engine { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: #94a3b8; }
+    .engine .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; }
 </style>
 """, unsafe_allow_html=True)
+
+USER_AVATAR, BOT_AVATAR = ":material/person:", ":material/query_stats:"
+SUGGESTIONS = [
+    "What was NVIDIA's revenue in fiscal 2026, and how much came from data center?",
+    "Compare Microsoft's and Alphabet's capital expenditures.",
+    "What are the biggest risk factors Tesla calls out?",
+    "How does Apple describe its reliance on China for manufacturing?",
+]
+
+
+def hero(subtitle: str, chips: list[str] = ()) -> None:
+    chip_html = "".join(f"<span class='chip'>{c}</span>" for c in chips)
+    st.markdown(f"<div class='hero'><div class='mark'>📑</div><h1>Filing-RAG</h1><p>{subtitle}</p>"
+                f"<div class='chips'>{chip_html}</div></div>", unsafe_allow_html=True)
+
 
 class Usage:
     """Process-wide counters shared by every visitor, so reloading the page resets nothing."""
@@ -106,21 +134,22 @@ if PUBLIC:
         st.error("PUBLIC_MODE requires DEMO_PASSCODE (8+ characters). Refusing to start.")
         st.stop()
     if not st.session_state.get("authed"):
-        st.markdown("<h1 style='text-align: center; margin-bottom: 2rem;'>📑 Filing-RAG</h1>", unsafe_allow_html=True)
-        st.info("Chat with SEC 10-K filings and earnings calls, with every figure cited to its source. "
-                "Runs on a self-hosted DeepSeek V4 Flash across two NVIDIA DGX Sparks.", icon="ℹ️")
-        attempts = st.session_state.get("attempts", 0)
-        if attempts >= 5:
-            st.error("Too many attempts. Reload the page to try again.")
-            st.stop()
-        code = st.text_input("Demo passcode", type="password")
-        if code:
-            if hmac.compare_digest(code.encode(), PASSCODE.encode()):
-                st.session_state.authed = True
-                st.rerun()
-            st.session_state.attempts = attempts + 1
-            time.sleep(1)
-            st.error("Wrong passcode.")
+        hero("Chat with SEC 10-K filings and earnings calls, with every figure cited to its source. "
+             "Runs on a self-hosted DeepSeek V4 Flash across two NVIDIA DGX Sparks.")
+        _, mid, _ = st.columns([1, 2, 1])
+        with mid:
+            attempts = st.session_state.get("attempts", 0)
+            if attempts >= 5:
+                st.error("Too many attempts. Reload the page to try again.")
+                st.stop()
+            code = st.text_input("Demo passcode", type="password", placeholder="Enter passcode and press Enter")
+            if code:
+                if hmac.compare_digest(code.encode(), PASSCODE.encode()):
+                    st.session_state.authed = True
+                    st.rerun()
+                st.session_state.attempts = attempts + 1
+                time.sleep(1)
+                st.error("Wrong passcode.")
         st.stop()
 
 engine = get_engine()
@@ -129,8 +158,8 @@ usage = get_usage()
 
 # ---------------------------------------------------------------- sidebar: ingest + filters
 with st.sidebar:
-    st.title("📑 Filing-RAG")
-    st.caption(f"⚡ **Engine:** `{llm.LLM_MODEL}`")
+    st.markdown(f"<div class='brand'>📑 Filing-RAG</div>"
+                f"<div class='engine'><span class='dot'></span>{llm.LLM_MODEL}</div>", unsafe_allow_html=True)
     st.divider()
 
     if not PUBLIC:
@@ -172,7 +201,7 @@ with st.sidebar:
             st.caption("No documents indexed yet.")
             
     st.divider()
-    if st.button("🗑️ Clear conversation", use_container_width=True):
+    if st.button("New conversation", icon=":material/add_comment:", use_container_width=True):
         st.session_state.messages = []
 
 
@@ -180,32 +209,41 @@ with st.sidebar:
 def show_sources(sources: list[dict]) -> None:
     if not sources:
         return
-    with st.expander(f"🔍 View Sources ({len(sources)})"):
+    with st.expander(f"Sources ({len(sources)})", icon=":material/description:"):
         for i, s in enumerate(sources, 1):
-            st.markdown(f"**[S{i}] · {citation_label(s['metadata'])}**")
+            st.markdown(f"**{citation_label(s['metadata'])}**")
             st.info(md_safe(s["text"]))
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Empty state UI
-if not st.session_state.messages:
-    st.markdown("<h2 style='text-align: center; margin-top: 4rem;'>How can I help you analyze today?</h2>", unsafe_allow_html=True)
-    if not retriever.docs:
+asked = st.session_state.get("asked", 0)
+limit_hit = PUBLIC and asked >= MAX_PER_SESSION
+question = st.chat_input("Ask about a 10-K or an earnings call…", disabled=limit_hit,
+                         max_chars=MAX_QUESTION_CHARS if PUBLIC else None)
+if not question and not limit_hit:
+    question = st.session_state.pop("suggested", None)
+
+if not st.session_state.messages and not question:
+    hero("Ask anything about these filings. Every figure comes back cited to its source.",
+         sorted(retriever.tickers()))
+    if retriever.docs:
+        st.markdown("<div class='hint'>Try one of these</div>", unsafe_allow_html=True)
+        with st.container(key="suggest"):
+            for row in range(0, len(SUGGESTIONS), 2):
+                for i, col in enumerate(st.columns(2), start=row):
+                    col.button(SUGGESTIONS[i], key=f"sg{i}", use_container_width=True,
+                               on_click=st.session_state.__setitem__, args=("suggested", SUGGESTIONS[i]))
+    else:
         st.warning("No documents indexed yet. Add a 10-K or a transcript from the sidebar to begin.")
 
 for m in st.session_state.messages:
-    with st.chat_message(m["role"], avatar="👤" if m["role"] == "user" else "🧠"):
+    with st.chat_message(m["role"], avatar=USER_AVATAR if m["role"] == "user" else BOT_AVATAR):
         st.markdown(md_safe(m["content"]))
         show_sources(m.get("sources", []))
 
-asked = st.session_state.get("asked", 0)
-limit_hit = PUBLIC and asked >= MAX_PER_SESSION
 if limit_hit:
     st.info("You've reached this demo's per-visitor question limit. Thanks for trying it!")
-
-question = st.chat_input("Ask about a 10-K or an earnings call…", disabled=limit_hit,
-                         max_chars=MAX_QUESTION_CHARS if PUBLIC else None)
 
 if question:
     refusal = usage.try_start() if PUBLIC else None
@@ -216,14 +254,14 @@ if question:
     try:
         history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
         st.session_state.messages.append({"role": "user", "content": question})
-        with st.chat_message("user", avatar="👤"):
+        with st.chat_message("user", avatar=USER_AVATAR):
             st.markdown(md_safe(question))
 
-        with st.chat_message("assistant", avatar="🧠"):
-            with st.spinner("Analyzing filings and transcripts..."):
+        with st.chat_message("assistant", avatar=BOT_AVATAR):
+            with st.spinner("Searching filings…"):
                 ans = engine.ask(question, history=history, tickers=tickers, doc_types=doc_types)
             if ans.query != question:
-                st.caption(f"✨ *Interpreted query:* `{ans.query}`")
+                st.caption(f"Searched for: {md_safe(ans.query)}")
             box, text = st.empty(), ""
             for tok in ans.stream:
                 text += tok
